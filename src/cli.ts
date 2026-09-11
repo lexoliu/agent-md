@@ -14,7 +14,11 @@ import {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildPrompt, type PlannedTarget } from "./agent-prompt.js";
+import {
+  buildAdjustPrompt,
+  buildPrompt,
+  type PlannedTarget,
+} from "./agent-prompt.js";
 import { detectDrivers, runDriver, type Driver } from "./drivers.js";
 import { cloneSource, findPackages, looksLikeGitRef } from "./source.js";
 import { applyStaged, filesEqual, showDiff, snapshotTarget } from "./stage.js";
@@ -253,17 +257,56 @@ async function main() {
     if (hadOriginal && !filesEqual(orig, target)) {
       log.warn(`${target} was modified during the agent session; the diff below is against the pre-session snapshot`);
     }
-    log.step(`Diff for ${target}`);
-    showDiff(orig, staged, target);
-    const ok =
-      args.yes ||
-      requireValue(await confirm({ message: `Apply to ${target}?` }));
-    if (ok) {
-      const bak = applyStaged(staged, target);
-      log.success(`applied ${target}${bak ? ` (backup: ${bak})` : ""}`);
-      applied++;
-    } else {
-      log.info(`skipped ${target}`);
+    while (true) {
+      log.step(`Diff for ${target}`);
+      showDiff(orig, staged, target);
+      const action = args.yes
+        ? "apply"
+        : requireValue(
+            await select({
+              message: `Apply to ${target}?`,
+              options: [
+                { value: "apply", label: "Apply" },
+                {
+                  value: "adjust",
+                  label: "Adjust with agent",
+                  hint: "chat with the agent to refine the staged result, then re-review",
+                },
+                { value: "skip", label: "Skip" },
+              ],
+            }),
+          );
+      if (action === "adjust") {
+        fs.rmSync(donePath, { force: true });
+        const adjFile = path.join(stagingDir, `prompt-adjust-${i}.md`);
+        fs.writeFileSync(
+          adjFile,
+          buildAdjustPrompt({
+            contentFiles,
+            target,
+            orig,
+            staged,
+            reportPath,
+            donePath,
+          }),
+        );
+        await runDriver(
+          driver,
+          fs.readFileSync(adjFile, "utf8"),
+          adjFile,
+          false,
+          donePath,
+        );
+        continue;
+      }
+      if (action === "apply") {
+        const bak = applyStaged(staged, target);
+        log.success(`applied ${target}${bak ? ` (backup: ${bak})` : ""}`);
+        applied++;
+      } else {
+        log.info(`skipped ${target}`);
+      }
+      break;
     }
   }
 
