@@ -23,6 +23,7 @@ export function buildPrompt(opts: {
   targets: PlannedTarget[];
   stagingDir: string;
   reportPath: string;
+  donePath: string;
   headless: boolean;
 }): string {
   const template = fs.readFileSync(TEMPLATE_URL, "utf8");
@@ -35,6 +36,7 @@ export function buildPrompt(opts: {
     .replace("{{TARGET_MAP}}", map)
     .replaceAll("{{STAGING_DIR}}", opts.stagingDir + path.sep)
     .replace("{{REPORT_PATH}}", opts.reportPath)
+    .replace("{{DONE_FILE}}", opts.donePath)
     .replace(
       "{{CONFLICT_POLICY}}",
       opts.headless ? HEADLESS_POLICY : INTERACTIVE_POLICY,

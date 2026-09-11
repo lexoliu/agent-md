@@ -32,4 +32,6 @@ decision (e.g. "merged into existing 'Workflow' section", "created new file",
 
 ## When you finish
 
-Write every staging output, update the report, then print DONE and stop.
+Write every staging output, update the report, then — as your last action —
+create an empty file at {{DONE_FILE}} to signal completion, print DONE, and
+stop. The .done file must be created only after all other writes are complete.

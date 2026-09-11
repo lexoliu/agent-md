@@ -204,11 +204,13 @@ async function main() {
 
   // 4. run the agent
   const reportPath = path.join(stagingDir, "report.md");
+  const donePath = path.join(stagingDir, ".done");
   const prompt = buildPrompt({
     contentFiles,
     targets: planned,
     stagingDir: outDir,
     reportPath,
+    donePath,
     headless: args.headless,
   });
   if (!args.headless) {
@@ -225,7 +227,7 @@ async function main() {
     prompt,
     promptFile,
     args.headless,
-    reportPath,
+    donePath,
   );
   if (code !== 0) log.warn(`${driver.label} exited with code ${code}`);
 
