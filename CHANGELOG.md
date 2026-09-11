@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/lexoliu/agent-md/compare/v1.0.0...v1.0.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* add repository field required by npm provenance ([2017814](https://github.com/lexoliu/agent-md/commit/2017814bbfb3a7d01f339579b3a32f9e50fbd7bd))
+* declare repository url for npm provenance ([3dd2089](https://github.com/lexoliu/agent-md/commit/3dd2089c6b64d4918569c64778a65a9dc8e1b77a))
+
 ## 1.0.0 (2026-09-11)
 
 
