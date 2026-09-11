@@ -18,9 +18,9 @@ anything is written.
 ## Usage
 
 ```sh
-npx agent-md install <source>
+npx agent-md-install install <source>
 # or
-bunx agent-md install <source>
+bunx agent-md-install install <source>
 ```
 
 `<source>` may be:
