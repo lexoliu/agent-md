@@ -88,7 +88,8 @@ export function runDriver(
   promptFile: string,
   headless: boolean,
   /** Interactive sessions don't exit on their own after DONE. The merge agent
-   * writes this file last, so once it exists we close the session. */
+   * creates this file strictly after all other writes, so its existence is a
+   * reliable completion signal. */
   doneMarkerFile?: string,
 ): Promise<number> {
   const args = headless
@@ -104,9 +105,9 @@ export function runDriver(
       poller = setInterval(() => {
         if (!fs.existsSync(doneMarkerFile)) return;
         clearInterval(poller);
-        setTimeout(() => child.kill("SIGTERM"), 1500);
-        setTimeout(() => child.kill("SIGKILL"), 6000);
-      }, 500);
+        setTimeout(() => child.kill("SIGTERM"), 1000);
+        setTimeout(() => child.kill("SIGKILL"), 5000);
+      }, 400);
     }
     child.on("error", () => {
       if (poller) clearInterval(poller);
