@@ -1,0 +1,29 @@
+{
+  "name": "agent-md",
+  "version": "0.1.0",
+  "description": "Install skill-style instruction packages into AGENTS.md/CLAUDE.md via a coding agent, with diff review",
+  "type": "module",
+  "bin": {
+    "agent-md": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "prompts"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "bun src/cli.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "typescript": "^7.0.2"
+  }
+}
