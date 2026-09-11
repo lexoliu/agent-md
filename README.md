@@ -29,8 +29,9 @@ bunx agent-md install <source>
 - a single `.md` file
 - a git URL, `owner/repo`, or `gh:owner/repo` shorthand (shallow-cloned)
 
-The installer asks which agent performs the merge (Claude Code or Codex), then
-which files to install into — global (`~/.claude/CLAUDE.md`,
+The installer asks which agent performs the merge — Claude Code, Codex, Devin,
+Antigravity (`agy`), or Grok, whichever are on `PATH` — then which files to
+install into — global (`~/.claude/CLAUDE.md`,
 `~/.codex/AGENTS.md`), project (`./CLAUDE.md`, `./AGENTS.md`), or custom paths.
 The agent merges the package into a staging directory — asking you about
 conflicts inside its own session — then `agent-md` shows a diff per file and
@@ -40,9 +41,9 @@ applies only what you approve. Originals are backed up to `<file>.bak`.
 
 | Flag | Effect |
 | --- | --- |
-| `--driver claude\|codex` | skip the driver prompt |
+| `--driver <name>` | skip the driver prompt (`claude`, `codex`, `devin`, `agy`, `grok`) |
 | `--target <path>` | target file, repeatable; skips target prompts |
-| `--headless` | run the agent non-interactively (`claude -p` / `codex exec`); conflicts are kept-as-existing and recorded in the report |
+| `--headless` | run the agent non-interactively (`claude -p`, `codex exec`, `devin -p`, `agy -p`, `grok --prompt-file`); conflicts are kept-as-existing and recorded in the report |
 | `--yes`, `-y` | apply staged results without per-file confirmation |
 
 ## How it works
@@ -56,4 +57,5 @@ target and applies on your confirmation.
 ## Requirements
 
 Node ≥ 18 (any npm-package runtime works: `npx` under Node, `bunx` under Bun),
-`git`, and at least one of `claude` or `codex` on `PATH`.
+`git`, and at least one supported agent CLI on `PATH` (`claude`, `codex`,
+`devin`, `agy`, or `grok`).

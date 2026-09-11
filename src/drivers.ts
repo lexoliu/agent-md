@@ -4,8 +4,10 @@ export interface Driver {
   id: string;
   label: string;
   cmd: string;
-  interactiveArgs: (prompt: string) => string[];
-  headlessArgs: (prompt: string) => string[];
+  /** Launch an interactive session; the agent asks the user itself. */
+  interactiveArgs: (prompt: string, promptFile: string) => string[];
+  /** Run one non-interactive turn; conflicts are kept-as-existing. */
+  headlessArgs: (prompt: string, promptFile: string) => string[];
 }
 
 export const DRIVERS: Driver[] = [
@@ -14,14 +16,61 @@ export const DRIVERS: Driver[] = [
     label: "Claude Code",
     cmd: "claude",
     interactiveArgs: (p) => ["--dangerously-skip-permissions", p],
-    headlessArgs: (p) => ["-p", "--dangerously-skip-permissions", p],
+    headlessArgs: (p) => ["-p", p, "--dangerously-skip-permissions"],
   },
   {
     id: "codex",
     label: "Codex",
     cmd: "codex",
-    interactiveArgs: (p) => ["--dangerously-bypass-approvals-and-sandbox", p],
-    headlessArgs: (p) => ["exec", "--dangerously-bypass-approvals-and-sandbox", p],
+    interactiveArgs: (p) => [
+      "--dangerously-bypass-approvals-and-sandbox",
+      p,
+    ],
+    headlessArgs: (p) => [
+      "exec",
+      "--dangerously-bypass-approvals-and-sandbox",
+      p,
+    ],
+  },
+  {
+    id: "devin",
+    label: "Devin",
+    cmd: "devin",
+    interactiveArgs: (_p, f) => [
+      "--permission-mode",
+      "dangerous",
+      "--prompt-file",
+      f,
+    ],
+    headlessArgs: (p) => [
+      "-p",
+      p,
+      "--permission-mode",
+      "dangerous",
+      "--respect-workspace-trust",
+      "false",
+    ],
+  },
+  {
+    id: "agy",
+    label: "Antigravity",
+    cmd: "agy",
+    interactiveArgs: (p) => [
+      "--dangerously-skip-permissions",
+      `--prompt-interactive=${p}`,
+    ],
+    headlessArgs: (p) => [
+      "--dangerously-skip-permissions",
+      "--print-timeout=15m",
+      `-p=${p}`,
+    ],
+  },
+  {
+    id: "grok",
+    label: "Grok",
+    cmd: "grok",
+    interactiveArgs: (p) => ["--always-approve", p],
+    headlessArgs: (_p, f) => ["--always-approve", "--prompt-file", f],
   },
 ];
 
@@ -35,11 +84,12 @@ export function detectDrivers(): Driver[] {
 export function runDriver(
   driver: Driver,
   prompt: string,
+  promptFile: string,
   headless: boolean,
 ): Promise<number> {
   const args = headless
-    ? driver.headlessArgs(prompt)
-    : driver.interactiveArgs(prompt);
+    ? driver.headlessArgs(prompt, promptFile)
+    : driver.interactiveArgs(prompt, promptFile);
   return new Promise((resolve) => {
     const child = spawn(driver.cmd, args, {
       stdio: "inherit",

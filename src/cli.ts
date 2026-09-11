@@ -37,7 +37,8 @@ Usage:
               a git URL, or owner/repo (gh:owner/repo) shorthand
 
 Options:
-  --driver claude|codex   skip the driver prompt
+  --driver <name>         skip the driver prompt (claude, codex, devin,
+                          agy, grok — whichever are on PATH)
   --target <path>         target file, repeatable; skips target prompts
   --headless              run the agent non-interactively; conflicts are
                           kept-as-existing and recorded in the report
@@ -210,8 +211,6 @@ async function main() {
     reportPath,
     headless: args.headless,
   });
-  fs.writeFileSync(path.join(stagingDir, "prompt.md"), prompt);
-
   if (!args.headless) {
     note(
       `Launching ${driver.label} in bypass-permissions mode.\n` +
@@ -219,7 +218,9 @@ async function main() {
         "When it prints DONE, exit the session (Ctrl+D or /exit) to continue.",
     );
   }
-  const code = await runDriver(driver, prompt, args.headless);
+  const promptFile = path.join(stagingDir, "prompt.md");
+  fs.writeFileSync(promptFile, prompt);
+  const code = await runDriver(driver, prompt, promptFile, args.headless);
   if (code !== 0) log.warn(`${driver.label} exited with code ${code}`);
 
   // 5. review staged output → consent → apply
