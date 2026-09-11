@@ -25,14 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance attestation
+      id-token: write # npm trusted publishing via OIDC
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # ships npm >= 11.5.1, required for OIDC publish
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish --access public # OIDC auth; provenance is automatic
