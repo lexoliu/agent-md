@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Install skill-style instruction packages into AGENTS.md/CLAUDE.md via a coding agent, with diff review",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lexoliu/agent-md.git"
+  },
   "bin": {
     "agent-md": "dist/cli.js"
   },
