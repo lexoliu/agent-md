@@ -40,6 +40,8 @@ export const DRIVERS: Driver[] = [
     interactiveArgs: (_p, f) => [
       "--permission-mode",
       "dangerous",
+      "--respect-workspace-trust",
+      "false",
       "--prompt-file",
       f,
     ],
