@@ -19,7 +19,14 @@ import {
   buildPrompt,
   type PlannedTarget,
 } from "./agent-prompt.js";
-import { detectDrivers, runDriver, type Driver } from "./drivers.js";
+import {
+  detectDrivers,
+  restoreTerminal,
+  runHeadless,
+  spawnInteractive,
+  type Driver,
+  type Session,
+} from "./drivers.js";
 import { cloneSource, findPackages, looksLikeGitRef } from "./source.js";
 import { applyStaged, filesEqual, showDiff, snapshotTarget } from "./stage.js";
 import { expandPath, presetTargets } from "./targets.js";
@@ -222,7 +229,7 @@ async function main() {
       `${driver.label} will run in bypass-permissions mode with its default model,\n` +
         `using your own ${driver.label} account quota.\n` +
         "It may ask you questions if the target file conflicts with the package.\n" +
-        "The session closes by itself once it reports DONE (or exit with Ctrl+D).",
+        "It pauses itself once it reports DONE so you can review the diff (or exit with Ctrl+D).",
     );
     const go = requireValue(
       await confirm({ message: `Launch ${driver.label}?` }),
@@ -231,18 +238,49 @@ async function main() {
   }
   const promptFile = path.join(stagingDir, "prompt.md");
   fs.writeFileSync(promptFile, prompt);
-  const code = await runDriver(
-    driver,
-    prompt,
-    promptFile,
-    args.headless,
-    donePath,
-  );
-  if (code !== 0) log.warn(`${driver.label} exited with code ${code}`);
+
+  /** Wait until the agent signals completion via the .done sentinel or exits. */
+  const waitForSession = async (s: Session): Promise<"done" | "exited"> => {
+    let iv: NodeJS.Timeout | undefined;
+    const appeared = new Promise<"done">((res) => {
+      iv = setInterval(() => {
+        if (fs.existsSync(donePath)) {
+          clearInterval(iv);
+          res("done");
+        }
+      }, 400);
+    });
+    const r = await Promise.race([
+      s.exited.then((): "exited" => "exited"),
+      appeared,
+    ]);
+    if (iv) clearInterval(iv);
+    if (r === "done" && !s.dead()) {
+      await new Promise((r2) => setTimeout(r2, 400)); // let trailing output flush
+      s.suspend();
+    }
+    restoreTerminal();
+    return r;
+  };
+
+  let session: Session | undefined;
+  if (args.headless) {
+    const code = await runHeadless(driver, prompt, promptFile);
+    if (code !== 0) log.warn(`${driver.label} exited with code ${code}`);
+  } else {
+    session = spawnInteractive(driver, prompt, promptFile);
+    const r = await waitForSession(session);
+    if (r === "exited") {
+      const code = await session.exited;
+      if (code !== 0) log.warn(`${driver.label} exited with code ${code}`);
+      session = undefined;
+    }
+  }
 
   // 5. review staged output → consent → apply
   let applied = 0;
-  for (let i = 0; i < planned.length; i++) {
+  try {
+    for (let i = 0; i < planned.length; i++) {
     const { target, staged } = planned[i];
     if (!fs.existsSync(staged)) {
       log.warn(`no staged output for ${target} — skipped`);
@@ -267,36 +305,49 @@ async function main() {
               message: `Apply to ${target}?`,
               options: [
                 { value: "apply", label: "Apply" },
-                {
-                  value: "adjust",
-                  label: "Adjust with agent",
-                  hint: "chat with the agent to refine the staged result, then re-review",
-                },
+                ...(args.headless
+                  ? []
+                  : [
+                      {
+                        value: "adjust",
+                        label: "Adjust with agent",
+                        hint: "chat with the agent to refine the staged result, then re-review",
+                      },
+                    ]),
                 { value: "skip", label: "Skip" },
               ],
             }),
           );
       if (action === "adjust") {
         fs.rmSync(donePath, { force: true });
-        const adjFile = path.join(stagingDir, `prompt-adjust-${i}.md`);
-        fs.writeFileSync(
-          adjFile,
-          buildAdjustPrompt({
-            contentFiles,
-            target,
-            orig,
-            staged,
-            reportPath,
-            donePath,
-          }),
-        );
-        await runDriver(
-          driver,
-          fs.readFileSync(adjFile, "utf8"),
-          adjFile,
-          false,
-          donePath,
-        );
+        if (session && !session.dead()) {
+          note(
+            `Back in the ${driver.label} session — describe the adjustment.\n` +
+              "It pauses again when it finishes (or exit with Ctrl+D).",
+          );
+          session.resume();
+        } else {
+          // The merge session is gone — start a scoped adjust session.
+          const adjFile = path.join(stagingDir, `prompt-adjust-${i}.md`);
+          fs.writeFileSync(
+            adjFile,
+            buildAdjustPrompt({
+              contentFiles,
+              target,
+              orig,
+              staged,
+              reportPath,
+              donePath,
+            }),
+          );
+          session = spawnInteractive(
+            driver,
+            fs.readFileSync(adjFile, "utf8"),
+            adjFile,
+          );
+        }
+        const r = await waitForSession(session);
+        if (r === "exited") session = undefined;
         continue;
       }
       if (action === "apply") {
@@ -308,6 +359,9 @@ async function main() {
       }
       break;
     }
+    }
+  } finally {
+    session?.kill();
   }
 
   if (fs.existsSync(reportPath)) {

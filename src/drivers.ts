@@ -82,72 +82,106 @@ export function detectDrivers(): Driver[] {
   );
 }
 
-export function runDriver(
+export function runHeadless(
   driver: Driver,
   prompt: string,
   promptFile: string,
-  headless: boolean,
-  /** Interactive sessions don't exit on their own after DONE. The merge agent
-   * creates this file strictly after all other writes, so its existence is a
-   * reliable completion signal. */
-  doneMarkerFile?: string,
 ): Promise<number> {
-  const args = headless
-    ? driver.headlessArgs(prompt, promptFile)
-    : driver.interactiveArgs(prompt, promptFile);
   return new Promise((resolve) => {
-    const child = spawn(driver.cmd, args, {
+    const child = spawn(driver.cmd, driver.headlessArgs(prompt, promptFile), {
       stdio: "inherit",
       shell: process.platform === "win32",
     });
-    let poller: NodeJS.Timeout | undefined;
-    let closedByUs = false;
-    if (!headless && doneMarkerFile) {
-      poller = setInterval(() => {
-        if (!fs.existsSync(doneMarkerFile)) return;
-        clearInterval(poller);
-        closedByUs = true;
-        setTimeout(() => child.kill("SIGTERM"), 1000);
-        setTimeout(() => child.kill("SIGKILL"), 5000);
-      }, 400);
-    }
+    child.on("error", () => resolve(127));
+    child.on("exit", (code) => resolve(code ?? 1));
+  });
+}
+
+export interface Session {
+  /** Resolves when the agent process exits (natural or killed). */
+  exited: Promise<number>;
+  dead: () => boolean;
+  /** Freeze the session so we can render the review UI (SIGSTOP; on Windows
+   * there is no suspend, so the process is terminated instead). */
+  suspend: () => void;
+  /** Bring a suspended session back so the user can keep chatting (SIGCONT). */
+  resume: () => void;
+  kill: () => void;
+}
+
+export function spawnInteractive(
+  driver: Driver,
+  prompt: string,
+  promptFile: string,
+): Session {
+  const child = spawn(driver.cmd, driver.interactiveArgs(prompt, promptFile), {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+  let dead = false;
+  const exited = new Promise<number>((resolve) => {
     child.on("error", () => {
-      if (poller) clearInterval(poller);
+      dead = true;
       resolve(127);
     });
     child.on("exit", (code) => {
-      if (poller) clearInterval(poller);
-      if (!headless) {
-        // A TUI killed mid-frame may leave the terminal in alternate-screen /
-        // raw / mouse-reporting state, and detached children may still write a
-        // last frame after the exit event. Settle briefly, then soft-reset the
-        // terminal before we render the review UI.
-        setTimeout(() => {
-          // The TUI's raw mode disables OPOST/ONLCR on the pty line discipline,
-          // which makes \n stop returning the cursor to column 0 — output
-          // staircases. Escape sequences can't fix that; stty sane restores it.
-          if (process.platform !== "win32") {
-            spawnSync("stty", ["sane"], { stdio: "inherit" });
-          }
-          process.stdout.write(
-            "\x1b[!p" + // DECSTR: soft reset (modes, scroll region, SGR)
-              "\x1b[?69l" + // left/right margin mode off (in case DECSTR misses it)
-              "\x1b[r" + // scroll region = full screen
-              "\x1b[?1049l" + // leave alternate screen
-              "\x1b[?25h" + // show cursor
-              "\x1b[0m" + // reset attributes
-              "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l" + // mouse off
-              "\x1b[?2004l" + // bracketed paste off
-              "\x1b[2J\x1b[H", // clear visible screen, cursor home
-          );
-          if (process.stdin.isTTY && process.stdin.isRaw) {
-            process.stdin.setRawMode(false);
-          }
-          resolve(closedByUs ? 0 : (code ?? 1));
-        }, 500);
-        return;
-      }
-      resolve(closedByUs ? 0 : (code ?? 1));
+      dead = true;
+      resolve(code ?? 1);
     });
   });
+  const canSuspend = process.platform !== "win32";
+  let savedTty: string | undefined;
+  return {
+    exited,
+    dead: () => dead,
+    suspend() {
+      if (dead) return;
+      child.kill(canSuspend ? "SIGSTOP" : "SIGTERM");
+      // Snapshot the TUI's termios while it is still in effect, so resume()
+      // can hand the pty back in the same mode — our own stty sane would
+      // otherwise leave the resumed TUI reading a cooked terminal.
+      if (canSuspend) {
+        const r = spawnSync("stty", ["-g"], {
+          stdio: ["inherit", "pipe", "inherit"],
+          encoding: "utf8",
+        });
+        if (r.status === 0) savedTty = r.stdout.trim();
+      }
+    },
+    resume() {
+      if (dead || !canSuspend) return;
+      if (savedTty) {
+        spawnSync("stty", [savedTty], { stdio: "inherit" });
+      }
+      child.kill("SIGCONT");
+    },
+    kill() {
+      if (!dead) child.kill("SIGKILL");
+    },
+  };
+}
+
+/** A TUI killed or suspended mid-frame can leave the terminal in alternate
+ * screen, raw mode, mouse reporting, or with the pty line discipline stripped
+ * of OPOST/ONLCR (\n stops returning to column 0 — output staircases). Call
+ * this after the session leaves the foreground, before rendering our UI. */
+export function restoreTerminal(): void {
+  if (process.platform !== "win32") {
+    // stty sane repairs the pty line discipline; escape sequences cannot.
+    spawnSync("stty", ["sane"], { stdio: "inherit" });
+  }
+  process.stdout.write(
+    "\x1b[!p" + // DECSTR: soft reset (modes, scroll region, SGR)
+      "\x1b[?69l" + // left/right margin mode off (in case DECSTR misses it)
+      "\x1b[r" + // scroll region = full screen
+      "\x1b[?1049l" + // leave alternate screen
+      "\x1b[?25h" + // show cursor
+      "\x1b[0m" + // reset attributes
+      "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l" + // mouse off
+      "\x1b[?2004l" + // bracketed paste off
+      "\x1b[2J\x1b[H", // clear visible screen, cursor home
+  );
+  if (process.stdin.isTTY && process.stdin.isRaw) {
+    process.stdin.setRawMode(false);
+  }
 }
