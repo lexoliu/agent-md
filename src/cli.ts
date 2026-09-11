@@ -215,12 +215,18 @@ async function main() {
     note(
       `Launching ${driver.label} in bypass-permissions mode.\n` +
         "It may ask you questions if the target file conflicts with the package.\n" +
-        "When it prints DONE, exit the session (Ctrl+D or /exit) to continue.",
+        "The session closes by itself once it reports DONE (or exit with Ctrl+D).",
     );
   }
   const promptFile = path.join(stagingDir, "prompt.md");
   fs.writeFileSync(promptFile, prompt);
-  const code = await runDriver(driver, prompt, promptFile, args.headless);
+  const code = await runDriver(
+    driver,
+    prompt,
+    promptFile,
+    args.headless,
+    reportPath,
+  );
   if (code !== 0) log.warn(`${driver.label} exited with code ${code}`);
 
   // 5. review staged output → consent → apply
@@ -241,7 +247,7 @@ async function main() {
       log.warn(`${target} was modified during the agent session; the diff below is against the pre-session snapshot`);
     }
     log.step(`Diff for ${target}`);
-    showDiff(orig, staged);
+    showDiff(orig, staged, target);
     const ok =
       args.yes ||
       requireValue(await confirm({ message: `Apply to ${target}?` }));

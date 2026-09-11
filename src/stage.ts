@@ -12,15 +12,35 @@ export function snapshotTarget(target: string, origDir: string, i: number): stri
   return snap;
 }
 
-export function showDiff(orig: string, staged: string): void {
+function onPath(cmd: string): boolean {
+  const probe = process.platform === "win32" ? "where" : "which";
+  return spawnSync(probe, [cmd], { stdio: "ignore" }).status === 0;
+}
+
+export function showDiff(orig: string, staged: string, target: string): void {
   const r = spawnSync(
     "git",
     ["diff", "--no-index", "--color=always", orig, staged],
-    { stdio: "inherit" },
+    { encoding: "utf8" },
   );
-  if (r.error || r.status === null) {
-    // no git — fall back to printing the staged file
+  if (r.error || r.stdout === undefined) {
     console.log(fs.readFileSync(staged, "utf8"));
+    return;
+  }
+  const stat = spawnSync(
+    "git",
+    ["diff", "--no-index", "--stat", orig, staged],
+    { encoding: "utf8" },
+  ).stdout?.trim().split("\n").pop();
+  if (stat) console.log(stat.trim());
+  // rewrite staging paths in the header to the real target path
+  const out = r.stdout
+    .replaceAll(orig, target)
+    .replaceAll(staged, target);
+  if (onPath("delta")) {
+    spawnSync("delta", { input: out, stdio: ["pipe", "inherit", "inherit"] });
+  } else {
+    process.stdout.write(out);
   }
 }
 
