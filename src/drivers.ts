@@ -101,10 +101,12 @@ export function runDriver(
       shell: process.platform === "win32",
     });
     let poller: NodeJS.Timeout | undefined;
+    let closedByUs = false;
     if (!headless && doneMarkerFile) {
       poller = setInterval(() => {
         if (!fs.existsSync(doneMarkerFile)) return;
         clearInterval(poller);
+        closedByUs = true;
         setTimeout(() => child.kill("SIGTERM"), 1000);
         setTimeout(() => child.kill("SIGKILL"), 5000);
       }, 400);
@@ -115,7 +117,21 @@ export function runDriver(
     });
     child.on("exit", (code) => {
       if (poller) clearInterval(poller);
-      resolve(code ?? 1);
+      if (!headless) {
+        // A TUI killed mid-frame may leave the terminal in alternate-screen /
+        // raw / mouse-reporting state. Restore a sane screen before we render.
+        process.stdout.write(
+          "\x1b[?1049l" + // leave alternate screen
+            "\x1b[?25h" + // show cursor
+            "\x1b[0m" + // reset attributes
+            "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l" + // mouse off
+            "\x1b[?2004l", // bracketed paste off
+        );
+        if (process.stdin.isTTY && process.stdin.isRaw) {
+          process.stdin.setRawMode(false);
+        }
+      }
+      resolve(closedByUs ? 0 : (code ?? 1));
     });
   });
 }
