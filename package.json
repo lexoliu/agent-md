@@ -1,6 +1,6 @@
 {
   "name": "agent-md-install",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Install skill-style instruction packages into AGENTS.md/CLAUDE.md via a coding agent, with diff review",
   "type": "module",
   "bin": {
