@@ -119,17 +119,33 @@ export function runDriver(
       if (poller) clearInterval(poller);
       if (!headless) {
         // A TUI killed mid-frame may leave the terminal in alternate-screen /
-        // raw / mouse-reporting state. Restore a sane screen before we render.
-        process.stdout.write(
-          "\x1b[?1049l" + // leave alternate screen
-            "\x1b[?25h" + // show cursor
-            "\x1b[0m" + // reset attributes
-            "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l" + // mouse off
-            "\x1b[?2004l", // bracketed paste off
-        );
-        if (process.stdin.isTTY && process.stdin.isRaw) {
-          process.stdin.setRawMode(false);
-        }
+        // raw / mouse-reporting state, and detached children may still write a
+        // last frame after the exit event. Settle briefly, then soft-reset the
+        // terminal before we render the review UI.
+        setTimeout(() => {
+          // The TUI's raw mode disables OPOST/ONLCR on the pty line discipline,
+          // which makes \n stop returning the cursor to column 0 — output
+          // staircases. Escape sequences can't fix that; stty sane restores it.
+          if (process.platform !== "win32") {
+            spawnSync("stty", ["sane"], { stdio: "inherit" });
+          }
+          process.stdout.write(
+            "\x1b[!p" + // DECSTR: soft reset (modes, scroll region, SGR)
+              "\x1b[?69l" + // left/right margin mode off (in case DECSTR misses it)
+              "\x1b[r" + // scroll region = full screen
+              "\x1b[?1049l" + // leave alternate screen
+              "\x1b[?25h" + // show cursor
+              "\x1b[0m" + // reset attributes
+              "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l" + // mouse off
+              "\x1b[?2004l" + // bracketed paste off
+              "\x1b[2J\x1b[H", // clear visible screen, cursor home
+          );
+          if (process.stdin.isTTY && process.stdin.isRaw) {
+            process.stdin.setRawMode(false);
+          }
+          resolve(closedByUs ? 0 : (code ?? 1));
+        }, 500);
+        return;
       }
       resolve(closedByUs ? 0 : (code ?? 1));
     });
