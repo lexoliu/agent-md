@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import fs from "node:fs";
 
 export interface Driver {
   id: string;
@@ -86,6 +87,9 @@ export function runDriver(
   prompt: string,
   promptFile: string,
   headless: boolean,
+  /** Interactive sessions don't exit on their own after DONE. The merge agent
+   * writes this file last, so once it exists we close the session. */
+  doneMarkerFile?: string,
 ): Promise<number> {
   const args = headless
     ? driver.headlessArgs(prompt, promptFile)
@@ -95,7 +99,22 @@ export function runDriver(
       stdio: "inherit",
       shell: process.platform === "win32",
     });
-    child.on("error", () => resolve(127));
-    child.on("exit", (code) => resolve(code ?? 1));
+    let poller: NodeJS.Timeout | undefined;
+    if (!headless && doneMarkerFile) {
+      poller = setInterval(() => {
+        if (!fs.existsSync(doneMarkerFile)) return;
+        clearInterval(poller);
+        setTimeout(() => child.kill("SIGTERM"), 1500);
+        setTimeout(() => child.kill("SIGKILL"), 6000);
+      }, 500);
+    }
+    child.on("error", () => {
+      if (poller) clearInterval(poller);
+      resolve(127);
+    });
+    child.on("exit", (code) => {
+      if (poller) clearInterval(poller);
+      resolve(code ?? 1);
+    });
   });
 }
