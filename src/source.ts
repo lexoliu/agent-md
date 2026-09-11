@@ -19,10 +19,12 @@ function gitUrl(src: string): string {
 
 export function cloneSource(src: string, destDir: string): void {
   const url = gitUrl(src);
-  const r = spawnSync("git", ["clone", "--depth", "1", url, destDir], {
-    stdio: "inherit",
+  const r = spawnSync("git", ["clone", "--depth", "1", "--quiet", url, destDir], {
+    encoding: "utf8",
   });
-  if (r.status !== 0) throw new Error(`git clone failed: ${url}`);
+  if (r.status !== 0) {
+    throw new Error(`git clone failed: ${url}\n${(r.stderr ?? "").trim()}`);
+  }
 }
 
 /**
