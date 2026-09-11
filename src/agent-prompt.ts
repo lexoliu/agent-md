@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 const TEMPLATE_URL = new URL("../prompts/merge-agent.md", import.meta.url);
+const ADJUST_TEMPLATE_URL = new URL(
+  "../prompts/adjust-agent.md",
+  import.meta.url,
+);
 
 const INTERACTIVE_POLICY =
   "If the existing file contradicts the package and neither reading is strictly " +
@@ -41,4 +45,23 @@ export function buildPrompt(opts: {
       "{{CONFLICT_POLICY}}",
       opts.headless ? HEADLESS_POLICY : INTERACTIVE_POLICY,
     );
+}
+
+export function buildAdjustPrompt(opts: {
+  contentFiles: string[];
+  target: string;
+  orig: string;
+  staged: string;
+  reportPath: string;
+  donePath: string;
+}): string {
+  const template = fs.readFileSync(ADJUST_TEMPLATE_URL, "utf8");
+  const files = opts.contentFiles.map((f) => `- ${f}`).join("\n");
+  return template
+    .replace("{{CONTENT_FILES}}", files)
+    .replaceAll("{{ORIG}}", opts.orig)
+    .replaceAll("{{STAGED}}", opts.staged)
+    .replaceAll("{{TARGET}}", opts.target)
+    .replace("{{REPORT_PATH}}", opts.reportPath)
+    .replace("{{DONE_FILE}}", opts.donePath);
 }
