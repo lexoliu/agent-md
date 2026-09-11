@@ -215,10 +215,15 @@ async function main() {
   });
   if (!args.headless) {
     note(
-      `Launching ${driver.label} in bypass-permissions mode.\n` +
+      `${driver.label} will run in bypass-permissions mode with its default model,\n` +
+        `using your own ${driver.label} account quota.\n` +
         "It may ask you questions if the target file conflicts with the package.\n" +
         "The session closes by itself once it reports DONE (or exit with Ctrl+D).",
     );
+    const go = requireValue(
+      await confirm({ message: `Launch ${driver.label}?` }),
+    );
+    if (!go) return outro("Aborted.");
   }
   const promptFile = path.join(stagingDir, "prompt.md");
   fs.writeFileSync(promptFile, prompt);
