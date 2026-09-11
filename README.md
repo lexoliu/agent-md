@@ -59,3 +59,8 @@ target and applies on your confirmation.
 Node ≥ 18 (any npm-package runtime works: `npx` under Node, `bunx` under Bun),
 `git`, and at least one supported agent CLI on `PATH` (`claude`, `codex`,
 `devin`, `agy`, or `grok`).
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.
