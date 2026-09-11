@@ -13,11 +13,6 @@ export function snapshotTarget(target: string, origDir: string, i: number): stri
   return snap;
 }
 
-function onPath(cmd: string): boolean {
-  const probe = process.platform === "win32" ? "where" : "which";
-  return spawnSync(probe, [cmd], { stdio: "ignore" }).status === 0;
-}
-
 function mdHighlight(s: string): string {
   if (/^#{1,6}\s/.test(s)) return pc.magenta(pc.bold(s));
   return s
@@ -78,19 +73,9 @@ export function showDiff(orig: string, staged: string, target: string): void {
     .stdout?.trim()
     .split("\n")
     .pop();
-  if (stat) console.log(stat.trim());
-  // rewrite staging paths in the header to the real target path
-  const rewritten = r.stdout
-    .replaceAll(orig, target)
-    .replaceAll(staged, target);
-  if (onPath("delta")) {
-    spawnSync("delta", {
-      input: rewritten,
-      stdio: ["pipe", "inherit", "inherit"],
-    });
-  } else {
-    process.stdout.write(renderDiff(rewritten));
-  }
+  if (stat) console.log(pc.dim(stat.trim()));
+  console.log(pc.bold(` ${target}`));
+  process.stdout.write(renderDiff(r.stdout));
 }
 
 export function applyStaged(staged: string, target: string): string | null {
